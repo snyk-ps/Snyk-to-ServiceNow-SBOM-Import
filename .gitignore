@@ -8,3 +8,12 @@
 __pycache__/
 *.pyc
 .venv/
+
+# OS / editor / IDE
+.DS_Store
+**/.DS_Store
+.cursor/
+.vscode/
+
+# Archives
+*.zip
