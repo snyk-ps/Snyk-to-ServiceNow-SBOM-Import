@@ -18,6 +18,19 @@ required on the target host.
 - OS trust-store TLS, custom CA bundles, and secret-redacted logging
 - Static binaries for Linux, macOS, and Windows (amd64/arm64)
 
+## Requirements
+
+Customer runtime:
+
+- The platform-specific executable only (no Python, Go, or package installation)
+- Network access to the configured Snyk and ServiceNow endpoints
+- A populated `.env` file or equivalent process environment variables
+
+Development/build:
+
+- Go 1.22 or newer
+- `make` for the provided convenience targets
+
 ## Customer deployment
 
 Select the executable matching the customer platform from `go/dist/`:
@@ -65,6 +78,42 @@ Build the complete customer release matrix:
 cd go
 make cross-compile VERSION=1.0.0
 ```
+
+Release artifacts are written to `go/dist/`. Use `--version` for the embedded
+semantic version and `--help` for the available command-line flags.
+
+## Jenkins pipeline
+
+The repository-root `Jenkinsfile` provides a parameterized Declarative Pipeline
+for both run modes. It checks out the repository, validates parameters, runs
+`gofmt`/`go vet`/`go test`, builds a static binary, executes it, and archives
+the binary plus generated SBOM files.
+
+Jenkins agent requirements:
+
+- Go 1.22 or newer
+- Network access to the selected Snyk and ServiceNow endpoints
+- Jenkins Credentials Binding plugin
+- Secret Text credentials for the Snyk API token and ServiceNow access token.
+  The Jenkinsfile defaults to credential IDs `snyk-api-token` and
+  `servicenow-access-token`; edit `SNYK_TOKEN_CREDENTIAL_ID` and
+  `SNOW_TOKEN_CREDENTIAL_ID` in its `environment` block if your IDs differ.
+
+Create a Pipeline or Multibranch Pipeline job using **Pipeline script from
+SCM** and leave the script path as `Jenkinsfile`. Configure the job parameters
+on the first run:
+
+- `RUN_MODE`: `SNYK_API` or `SNYK_CLI`
+- `SNOW_APPLICATION_SCOPE`: project, target, or org (API mode)
+- Snyk/ServiceNow IDs
+- `API_DRY_RUN` (defaults to true)
+- `SBOM_FILE_PATH` (required for CLI mode; file must exist in the workspace)
+
+Tokens are bound with fixed `withCredentials` IDs (not build parameters), shell
+tracing is disabled during execution, application logs redact authorization
+values, and endpoint parameters are validated to prevent credential forwarding
+to arbitrary hosts. Restrict job configuration/build permissions as usual for
+credentialed pipelines.
 
 ## Run modes
 
@@ -156,20 +205,20 @@ Body: unmodified SBOM file bytes
 
 ```text
 go/
-├── cmd/snyk-sbom-to-servicenow/
+├── cmd/snyk-sbom-to-servicenow/  executable entrypoint
 ├── internal/
-│   ├── apperr/
-│   ├── climode/
-│   ├── config/
-│   ├── httpx/
-│   ├── logging/
-│   ├── redact/
-│   ├── sbomfile/
-│   ├── scope/
-│   ├── servicenow/
-│   └── snyk/
-├── Makefile
-└── go.mod
+│   ├── apperr/                   typed errors and exit codes
+│   ├── climode/                  SNYK_CLI orchestration
+│   ├── config/                   .env loading, defaults, validation
+│   ├── httpx/                    HTTP/TLS wrapper
+│   ├── logging/                  leveled logging
+│   ├── redact/                   secret redaction
+│   ├── sbomfile/                 timestamped file persistence
+│   ├── scope/                    API scope orchestration and summary
+│   ├── servicenow/               ServiceNow upload client
+│   └── snyk/                     Snyk SBOM and discovery clients
+├── Makefile                      build/test/cross-compile targets
+└── go.mod                        Go module definition
 ```
 
 The historical Python implementation is preserved on the `legacy-python`
