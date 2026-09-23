@@ -92,12 +92,12 @@ The utility SHALL read `SNOW_APPLICATION_SCOPE` to determine how many Snyk proje
 
 ### Requirement: Run mode configuration
 
-The utility SHALL read `RUN_MODE` (default `SNYK_API`; accepted values `SNYK_API`, `SNYK_CLI`) and, in `SNYK_CLI` mode, accept a `--sbom-file-path` command-line argument identifying the SBOM file to upload. An invalid `RUN_MODE` MUST terminate with exit code 1 (Configuration Error).
+The utility SHALL read `RUN_MODE` (default `SNYK_CLI`; accepted values `SNYK_API`, `SNYK_CLI`) and, in `SNYK_CLI` mode, accept a `--sbom-file-path` command-line argument identifying the SBOM file to upload. An invalid `RUN_MODE` MUST terminate with exit code 1 (Configuration Error).
 
 #### Scenario: Default run mode
 
 - **WHEN** `RUN_MODE` is not set
-- **THEN** the mode is `SNYK_API`
+- **THEN** the mode is `SNYK_CLI`
 
 #### Scenario: CLI file path argument accepted
 

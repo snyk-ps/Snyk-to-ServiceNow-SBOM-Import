@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	ModeAPI = "SNYK_API"
-	ModeCLI = "SNYK_CLI"
+	ModeAPI        = "SNYK_API"
+	ModeCLI        = "SNYK_CLI"
+	DefaultRunMode = ModeCLI
 
 	ScopeProject = "SNYK_PROJECT"
 	ScopeTarget  = "SNYK_TARGET"
@@ -109,7 +110,7 @@ func LoadWithEnvironment(dotEnvPath string, environment map[string]string) (Conf
 		values[key] = value // process environment wins
 	}
 
-	runMode := strings.ToUpper(get(values, "RUN_MODE", ModeAPI))
+	runMode := strings.ToUpper(get(values, "RUN_MODE", DefaultRunMode))
 	if !contains(validRunModes, runMode) {
 		return Config{}, &apperr.Error{
 			Kind:     apperr.KindConfig,

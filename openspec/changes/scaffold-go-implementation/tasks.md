@@ -16,7 +16,7 @@
 ## 3. Configuration
 
 - [x] 3.1 `internal/config`: `Config` struct + env load with `.env` fallback (process env wins)
-- [x] 3.2 Parse/validate `RUN_MODE` (default `SNYK_API`) and `SNOW_APPLICATION_SCOPE` (default `SNYK_PROJECT`); invalid → exit 1
+- [x] 3.2 Parse/validate `RUN_MODE` (default `SNYK_CLI`) and `SNOW_APPLICATION_SCOPE` (default `SNYK_PROJECT`); invalid → exit 1
 - [x] 3.3 Mode/scope-dependent required-variable validation (ServiceNow always; Snyk API + scope vars only in API mode) + placeholder (`MY_`) guard
 - [x] 3.4 Defaults + `API_DRY_RUN`, `SSL_VERIFY`, `CA_BUNDLE`, `HTTP_TIMEOUT_SECONDS`; `sbomSource` derived from run mode
 

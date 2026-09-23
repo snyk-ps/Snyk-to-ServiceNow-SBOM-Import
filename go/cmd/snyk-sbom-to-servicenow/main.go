@@ -19,7 +19,7 @@ import (
 	"github.com/snyk-ps/snyk-sbom-to-servicenow/internal/snyk"
 )
 
-var version = "1.0.0"
+var version = "2.0.1"
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

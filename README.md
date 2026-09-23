@@ -1,6 +1,6 @@
 # Snyk SBOM → ServiceNow Upload Utility
 
-**Go release:** 1.0.0
+**Go release:** 2.0.1
 
 A standalone Go command that exports Software Bills of Materials from Snyk and
 uploads them to ServiceNow Vulnerability Response. Customer deployments receive
@@ -51,14 +51,17 @@ directory so the binary finds `.env` and writes generated SBOM files there.
 ```bash
 chmod +x snyk-sbom-to-servicenow-linux-amd64
 ./snyk-sbom-to-servicenow-linux-amd64 --version
-./snyk-sbom-to-servicenow-linux-amd64
+./snyk-sbom-to-servicenow-linux-amd64 --sbom-file-path ./sbom.json
+
+# API mode must now be selected explicitly
+RUN_MODE=SNYK_API ./snyk-sbom-to-servicenow-linux-amd64
 ```
 
 Windows:
 
 ```powershell
 .\snyk-sbom-to-servicenow-windows-amd64.exe --version
-.\snyk-sbom-to-servicenow-windows-amd64.exe
+.\snyk-sbom-to-servicenow-windows-amd64.exe --sbom-file-path .\sbom.json
 ```
 
 ## Build from source
@@ -76,7 +79,7 @@ Build the complete customer release matrix:
 
 ```bash
 cd go
-make cross-compile VERSION=1.0.0
+make cross-compile VERSION=2.0.1
 ```
 
 Release artifacts are written to `go/dist/`. Use `--version` for the embedded
@@ -119,8 +122,8 @@ credentialed pipelines.
 
 ### SNYK_API
 
-The default mode discovers projects and generates SBOMs through the Snyk REST
-API.
+API mode discovers projects and generates SBOMs through the Snyk REST API. Set
+`RUN_MODE=SNYK_API` explicitly because the default mode is `SNYK_CLI`.
 
 ```bash
 RUN_MODE=SNYK_API ./snyk-sbom-to-servicenow
@@ -137,6 +140,8 @@ RUN_MODE=SNYK_API ./snyk-sbom-to-servicenow
 Set `API_DRY_RUN=true` to generate/persist files without uploading them.
 
 ### SNYK_CLI
+
+This is the default run mode when `RUN_MODE` is unset.
 
 Generate a JSON SBOM with the native
 [`snyk sbom`](https://docs.snyk.io/developer-tools/snyk-cli/snyk-cli/commands/sbom)
@@ -170,7 +175,7 @@ Optional defaults:
 
 | Variable | Default |
 | --- | --- |
-| `RUN_MODE` | `SNYK_API` |
+| `RUN_MODE` | `SNYK_CLI` |
 | `SNOW_APPLICATION_SCOPE` | `SNYK_PROJECT` |
 | `SNYK_BASE_URL` | `https://api.snyk.io/rest` |
 | `SNYK_SBOM_FORMAT` | `cyclonedx1.6+json` |

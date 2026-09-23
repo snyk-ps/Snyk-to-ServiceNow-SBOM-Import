@@ -18,7 +18,7 @@ pipeline {
     parameters {
         choice(
             name: 'RUN_MODE',
-            choices: ['SNYK_API', 'SNYK_CLI'],
+            choices: ['SNYK_CLI', 'SNYK_API'],
             description: 'Generate SBOMs through the Snyk API or upload a file produced by the Snyk CLI.'
         )
         choice(
@@ -52,7 +52,7 @@ pipeline {
         string(name: 'HTTP_TIMEOUT_SECONDS', defaultValue: '60', description: 'Per-request HTTP timeout.', trim: true)
         booleanParam(name: 'SSL_VERIFY', defaultValue: true, description: 'Verify TLS certificates.')
         string(name: 'CA_BUNDLE', defaultValue: '', description: 'Optional workspace/agent path to a PEM CA bundle.', trim: true)
-        string(name: 'VERSION', defaultValue: '1.0.0', description: 'Semantic version embedded in the binary.', trim: true)
+        string(name: 'VERSION', defaultValue: '2.0.1', description: 'Semantic version embedded in the binary.', trim: true)
     }
 
     environment {

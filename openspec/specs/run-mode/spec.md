@@ -5,12 +5,12 @@ TBD - created by archiving change add-run-mode. Update Purpose after archive.
 ## Requirements
 ### Requirement: Run mode selection
 
-The utility SHALL read `RUN_MODE` to decide how it obtains the SBOM. It MUST accept exactly the values `SNYK_API` and `SNYK_CLI`, defaulting to `SNYK_API` when unset. Any other value MUST terminate execution with exit code 1 (Configuration Error) before any other work.
+The utility SHALL read `RUN_MODE` to decide how it obtains the SBOM. It MUST accept exactly the values `SNYK_API` and `SNYK_CLI`, defaulting to `SNYK_CLI` when unset. Any other value MUST terminate execution with exit code 1 (Configuration Error) before any other work.
 
 #### Scenario: Default run mode
 
 - **WHEN** `RUN_MODE` is not set
-- **THEN** the mode is `SNYK_API`
+- **THEN** the mode is `SNYK_CLI`
 
 #### Scenario: Valid run mode accepted
 

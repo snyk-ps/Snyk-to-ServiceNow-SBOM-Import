@@ -75,10 +75,10 @@ func TestValidation(t *testing.T) {
 	}
 }
 
-func TestCLIModeDoesNotRequireSnykAPISettings(t *testing.T) {
+func TestDefaultCLIModeDoesNotRequireSnykAPISettings(t *testing.T) {
 	cfg, err := config.LoadWithEnvironment(
 		filepath.Join(t.TempDir(), ".env"),
-		merge(snowEnv(), map[string]string{"RUN_MODE": config.ModeCLI}),
+		snowEnv(),
 	)
 	if err != nil {
 		t.Fatalf("LoadWithEnvironment() error = %v", err)

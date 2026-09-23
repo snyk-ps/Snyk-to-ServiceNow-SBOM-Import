@@ -2,7 +2,7 @@ APP := snyk-sbom-to-servicenow
 CMD := ./cmd/$(APP)
 BIN_DIR := bin
 DIST_DIR := dist
-VERSION ?= 1.0.0
+VERSION ?= 2.0.1
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: all build test vet fmt check cross-compile clean
