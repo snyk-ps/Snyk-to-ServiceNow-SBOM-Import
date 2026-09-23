@@ -4,11 +4,6 @@
 # Secrets / local config
 .env
 
-# Python
-__pycache__/
-*.pyc
-.venv/
-
 # OS / editor / IDE
 .DS_Store
 **/.DS_Store
@@ -17,3 +12,11 @@ __pycache__/
 
 # Archives
 *.zip
+
+# Go build artifacts
+/go/bin/
+/go/dist/
+/go/coverage.out
+
+# Local developer toolchains
+/.tools/
