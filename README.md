@@ -13,6 +13,7 @@ required on the target host.
 - Project, target, and organization API scopes
 - Timestamped JSON SBOM files
 - ServiceNow `sbomSource=SnykAPI` / `SnykCLI`
+- Optional ServiceNow build ID from `BUILD_ID` or `--buildid`
 - Paginated Snyk discovery
 - Unsupported project types are skipped rather than failed
 - OS trust-store TLS, custom CA bundles, and secret-redacted logging
@@ -184,12 +185,43 @@ Optional defaults:
 | `HTTP_TIMEOUT_SECONDS` | `60` |
 | `SSL_VERIFY` | `true` |
 | `CA_BUNDLE` | unset |
+| `BUILD_ID` | unset (`buildId` omitted) |
+
+### Optional build ID
+
+Set `BUILD_ID` to associate every ServiceNow upload in the invocation with a
+build. An explicitly supplied `--buildid` value takes precedence over the
+environment value. If the effective value is empty, the request omits
+`buildId`; therefore, `--buildid=` intentionally suppresses a configured
+`BUILD_ID`.
+
+```bash
+# Environment value in API mode
+RUN_MODE=SNYK_API BUILD_ID='release 2026.10.13 / build #42' \
+  ./snyk-sbom-to-servicenow
+
+# Command-line value in CLI mode
+./snyk-sbom-to-servicenow --sbom-file-path ./sbom.json \
+  --buildid='release 2026.10.13 / build #42'
+
+# The command-line value wins when both are present
+RUN_MODE=SNYK_API BUILD_ID='environment-build' \
+  ./snyk-sbom-to-servicenow --buildid='command-build'
+
+# An explicitly empty command-line value suppresses BUILD_ID
+RUN_MODE=SNYK_API BUILD_ID='environment-build' \
+  ./snyk-sbom-to-servicenow --buildid=
+```
+
+Spaces and URL-reserved characters are encoded automatically. Missing build ID
+configuration is valid and preserves the previous request behavior.
 
 ## ServiceNow request
 
 ```text
 POST https://<instance>.service-now.com/api/sbom/core/upload
      ?businessApplicationId=<id>&sbomSource=<SnykAPI|SnykCLI>
+     [&buildId=<optional-build-id>]
 Authorization: Bearer <SNOW_ACCESS_TOKEN>
 Content-Type: application/json
 Body: unmodified SBOM file bytes

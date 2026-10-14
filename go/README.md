@@ -40,7 +40,21 @@ default, so an SBOM file path is required unless API mode is selected explicitly
 
 # Snyk REST API mode
 RUN_MODE=SNYK_API ./bin/snyk-sbom-to-servicenow
+
+# Optional ServiceNow build ID from the environment
+RUN_MODE=SNYK_API BUILD_ID='release 2026.10.13' \
+  ./bin/snyk-sbom-to-servicenow
+
+# A command-line build ID overrides BUILD_ID
+BUILD_ID='environment-build' \
+  ./bin/snyk-sbom-to-servicenow --sbom-file-path ./sbom.json \
+  --buildid='command-build'
 ```
+
+`BUILD_ID` is optional. If `--buildid` is present, it takes precedence even
+when explicitly empty; use `--buildid=` to suppress an environment value.
+When the effective value is empty, the upload omits `buildId`. Spaces and
+special characters are URL encoded automatically.
 
 Use `--version` for the embedded semantic version and `--help` for flags.
 
