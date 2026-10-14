@@ -21,6 +21,13 @@ import (
 
 var version = "2.0.1"
 
+type commandOptions struct {
+	sbomFilePath    string
+	buildID         string
+	buildIDProvided bool
+	showVersion     bool
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -28,21 +35,14 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("snyk-sbom-to-servicenow", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	sbomFilePath := flags.String(
-		"sbom-file-path",
-		"",
-		"path to the SBOM file to upload (required when RUN_MODE=SNYK_CLI)",
-	)
-	showVersion := flags.Bool("version", false, "print the version and exit")
-	if err := flags.Parse(args); err != nil {
+	options, err := parseCommandOptions(args, stderr)
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return apperr.ExitSuccess
 		}
 		return apperr.ExitConfig
 	}
-	if *showVersion {
+	if options.showVersion {
 		fmt.Fprintf(stdout, "snyk-sbom-to-servicenow %s\n", version)
 		return apperr.ExitSuccess
 	}
@@ -53,6 +53,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		logError(bootstrap, "Configuration error", err)
 		return apperr.ExitCode(err)
 	}
+	cfg = cfg.WithBuildIDOverride(options.buildID, options.buildIDProvided)
 	logger := applog.New(cfg.DebugLevel, stderr)
 
 	httpClient, err := httpx.New(cfg.HTTPTimeout, cfg.SSLVerify, cfg.CABundle, logger)
@@ -65,7 +66,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 
 	if cfg.RunMode == config.ModeCLI {
 		logger.Info("Starting SBOM upload (mode=SNYK_CLI)")
-		if err := climode.Run(ctx, cfg, *sbomFilePath, serviceNowClient, logger); err != nil {
+		if err := climode.Run(ctx, cfg, options.sbomFilePath, serviceNowClient, logger); err != nil {
 			logError(logger, errorName(err), err)
 			return apperr.ExitCode(err)
 		}
@@ -86,6 +87,36 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return apperr.ExitCode(err)
 	}
 	return summary.ExitCode()
+}
+
+func parseCommandOptions(args []string, output io.Writer) (commandOptions, error) {
+	flags := flag.NewFlagSet("snyk-sbom-to-servicenow", flag.ContinueOnError)
+	flags.SetOutput(output)
+
+	var options commandOptions
+	flags.StringVar(
+		&options.sbomFilePath,
+		"sbom-file-path",
+		"",
+		"path to the SBOM file to upload (required when RUN_MODE=SNYK_CLI)",
+	)
+	flags.StringVar(
+		&options.buildID,
+		"buildid",
+		"",
+		"optional ServiceNow build ID (overrides BUILD_ID, including when empty)",
+	)
+	flags.BoolVar(&options.showVersion, "version", false, "print the version and exit")
+
+	if err := flags.Parse(args); err != nil {
+		return commandOptions{}, err
+	}
+	flags.Visit(func(parsed *flag.Flag) {
+		if parsed.Name == "buildid" {
+			options.buildIDProvided = true
+		}
+	})
+	return options, nil
 }
 
 func logError(logger *applog.Logger, prefix string, err error) {

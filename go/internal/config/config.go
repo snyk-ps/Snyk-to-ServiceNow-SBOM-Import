@@ -64,6 +64,7 @@ type Config struct {
 	SnowAccessToken           string
 	SnowBusinessApplicationID string
 	SnowApplicationScope      string
+	BuildID                   string
 
 	RunMode string
 
@@ -85,6 +86,16 @@ func (c Config) SBOMSource() string {
 		return "SnykCLI"
 	}
 	return "SnykAPI"
+}
+
+// WithBuildIDOverride returns a copy with the command-line build ID applied
+// when the flag was explicitly provided. An empty override intentionally
+// suppresses the BUILD_ID environment value.
+func (c Config) WithBuildIDOverride(value string, provided bool) Config {
+	if provided {
+		c.BuildID = strings.TrimSpace(value)
+	}
+	return c
 }
 
 // Load reads .env in the current directory, overlays the process environment,
@@ -172,6 +183,7 @@ func LoadWithEnvironment(dotEnvPath string, environment map[string]string) (Conf
 		SnowAccessToken:           get(values, "SNOW_ACCESS_TOKEN", ""),
 		SnowBusinessApplicationID: get(values, "SNOW_BUSINESS_APPLICATION_ID", ""),
 		SnowApplicationScope:      scope,
+		BuildID:                   get(values, "BUILD_ID", ""),
 
 		RunMode: runMode,
 

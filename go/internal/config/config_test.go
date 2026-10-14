@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,6 +131,107 @@ func TestAPIModeDefaultsAndEnvPrecedence(t *testing.T) {
 	}
 	if cfg.SBOMSource() != "SnykAPI" {
 		t.Fatalf("SBOMSource() = %q, want SnykAPI", cfg.SBOMSource())
+	}
+}
+
+func TestOptionalBuildIDResolution(t *testing.T) {
+	tests := []struct {
+		name             string
+		environmentValue string
+		environmentSet   bool
+		commandValue     string
+		commandProvided  bool
+		want             string
+	}{
+		{name: "neither input"},
+		{
+			name:             "environment only",
+			environmentValue: "environment-build",
+			environmentSet:   true,
+			want:             "environment-build",
+		},
+		{
+			name:            "command line only",
+			commandValue:    "command-build",
+			commandProvided: true,
+			want:            "command-build",
+		},
+		{
+			name:             "command line overrides environment",
+			environmentValue: "environment-build",
+			environmentSet:   true,
+			commandValue:     "command-build",
+			commandProvided:  true,
+			want:             "command-build",
+		},
+		{
+			name:             "explicit empty command line suppresses environment",
+			environmentValue: "environment-build",
+			environmentSet:   true,
+			commandProvided:  true,
+		},
+		{
+			name:             "whitespace environment is unavailable",
+			environmentValue: "   ",
+			environmentSet:   true,
+		},
+		{
+			name:             "whitespace command line is unavailable",
+			environmentValue: "environment-build",
+			environmentSet:   true,
+			commandValue:     "   ",
+			commandProvided:  true,
+		},
+		{
+			name:             "optional build ID is not placeholder validated",
+			environmentValue: "MY_BUILD_ID",
+			environmentSet:   true,
+			want:             "MY_BUILD_ID",
+		},
+		{
+			name:            "internal spaces and special characters are preserved",
+			commandValue:    "release 42/A&B",
+			commandProvided: true,
+			want:            "release 42/A&B",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			environment := snowEnv()
+			if test.environmentSet {
+				environment["BUILD_ID"] = test.environmentValue
+			}
+			cfg, err := config.LoadWithEnvironment(
+				filepath.Join(t.TempDir(), ".env"),
+				environment,
+			)
+			if err != nil {
+				t.Fatalf("LoadWithEnvironment() error = %v", err)
+			}
+
+			cfg = cfg.WithBuildIDOverride(test.commandValue, test.commandProvided)
+			if cfg.BuildID != test.want {
+				t.Fatalf("BuildID = %q, want %q", cfg.BuildID, test.want)
+			}
+		})
+	}
+}
+
+func TestBuildIDDoesNotMakeBusinessApplicationOptional(t *testing.T) {
+	_, err := config.LoadWithEnvironment(
+		filepath.Join(t.TempDir(), ".env"),
+		map[string]string{
+			"SNOW_INSTANCE_SUBDOMAIN": "instance",
+			"SNOW_ACCESS_TOKEN":       "snow-token",
+			"BUILD_ID":                "build-42",
+		},
+	)
+	if err == nil {
+		t.Fatal("expected missing SNOW_BUSINESS_APPLICATION_ID error")
+	}
+	if !strings.Contains(err.Error(), "SNOW_BUSINESS_APPLICATION_ID") {
+		t.Fatalf("error = %q, want SNOW_BUSINESS_APPLICATION_ID", err)
 	}
 }
 

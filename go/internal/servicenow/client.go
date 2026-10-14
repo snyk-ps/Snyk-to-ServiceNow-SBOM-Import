@@ -66,10 +66,14 @@ func (c *Client) Upload(ctx context.Context, path string) (map[string]any, error
 		"businessApplicationId": []string{c.config.SnowBusinessApplicationID},
 		"sbomSource":            []string{c.config.SBOMSource()},
 	}
+	if buildID := strings.TrimSpace(c.config.BuildID); buildID != "" {
+		query.Set("buildId", buildID)
+	}
 	if c.logger != nil {
 		c.logger.Info("Uploading SBOM to ServiceNow")
 		c.logger.Debug("Upload URL: %q", endpoint)
 		c.logger.Debug("SNOW_BUSINESS_APPLICATION_ID: %q", c.config.SnowBusinessApplicationID)
+		c.logger.Debug("Build ID: %q", c.config.BuildID)
 		c.logger.Debug("SBOM File: %q", path)
 		c.logger.Debug("Payload Size: %d", len(payload))
 	}
