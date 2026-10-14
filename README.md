@@ -1,6 +1,6 @@
 # Snyk SBOM → ServiceNow Upload Utility
 
-**Go release:** 2.0.1
+**Go release:** 2.1.0
 
 A standalone Go command that exports Software Bills of Materials from Snyk and
 uploads them to ServiceNow Vulnerability Response. Customer deployments receive
@@ -80,7 +80,7 @@ Build the complete customer release matrix:
 
 ```bash
 cd go
-make cross-compile VERSION=2.0.1
+make cross-compile VERSION=2.1.0
 ```
 
 Release artifacts are written to `go/dist/`. Use `--version` for the embedded

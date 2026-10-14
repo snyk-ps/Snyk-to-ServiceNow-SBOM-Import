@@ -1,34 +1,40 @@
-# v2.0.1 — CLI-First Default
+# v2.1.0 — Optional ServiceNow Build ID
 
-This patch release changes the default `RUN_MODE` from `SNYK_API` to
-`SNYK_CLI`. The safer default requires callers to provide an explicit SBOM file
-and prevents an unset `RUN_MODE` from initiating Snyk API discovery.
+This release adds an optional ServiceNow `buildId` to SBOM upload requests so
+uploads from multiple repositories can be associated with the same build.
 
 ## Changes
 
-- `RUN_MODE` now defaults to `SNYK_CLI`.
-- `SNYK_API` remains fully supported and must now be selected explicitly.
-- Jenkins defaults to `SNYK_CLI`.
-- Customer and Go developer documentation now use CLI-first examples.
-- Embedded binary/build version updated to 2.0.1.
+- Accept an optional build ID from the `BUILD_ID` environment variable.
+- Accept an optional `--buildid` command-line argument in both Snyk API and
+  Snyk CLI modes.
+- Give `--buildid` precedence over `BUILD_ID`, including an explicitly empty
+  `--buildid=` value.
+- Omit `buildId` when neither input supplies a non-empty value, preserving
+  compatibility with existing deployments.
+- URL-encode spaces and reserved characters in build IDs.
+- Preserve the existing `businessApplicationId`, `sbomSource`, authentication,
+  and SBOM payload behavior.
 
-## Default usage
+## Usage
 
-Generate a JSON SBOM using the native Snyk CLI, then upload it:
+Use an environment variable:
 
 ```bash
-snyk sbom --format=cyclonedx1.6+json --all-projects > sbom.json
+RUN_MODE=SNYK_API BUILD_ID='release 2026.10.13 / build #42' \
+  ./snyk-sbom-to-servicenow
+```
 
+Or pass the command-line argument:
+
+```bash
 ./snyk-sbom-to-servicenow \
-  --sbom-file-path ./sbom.json
+  --sbom-file-path ./sbom.json \
+  --buildid='release 2026.10.13 / build #42'
 ```
 
-Select API mode explicitly when discovery/generation through Snyk REST is
-required:
-
-```bash
-RUN_MODE=SNYK_API ./snyk-sbom-to-servicenow
-```
+When both inputs are present, the command-line value wins. Use `--buildid=` to
+explicitly suppress an environment-provided value.
 
 ## Distribution
 

@@ -19,7 +19,7 @@ import (
 	"github.com/snyk-ps/snyk-sbom-to-servicenow/internal/snyk"
 )
 
-var version = "2.0.1"
+var version = "2.1.0"
 
 type commandOptions struct {
 	sbomFilePath    string

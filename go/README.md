@@ -1,6 +1,6 @@
 # Go implementation
 
-**Version:** 2.0.1  
+**Version:** 2.1.0
 **Default run mode:** `SNYK_CLI`
 
 This directory contains the standalone Go implementation of the Snyk SBOM →
@@ -24,7 +24,7 @@ make build
 Build Linux, macOS, and Windows release binaries for amd64/arm64:
 
 ```bash
-make cross-compile VERSION=2.0.1
+make cross-compile VERSION=2.1.0
 ```
 
 Artifacts are written to `go/dist/`.
