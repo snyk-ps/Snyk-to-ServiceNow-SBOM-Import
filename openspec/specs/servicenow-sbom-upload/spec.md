@@ -10,7 +10,10 @@ After a successful SBOM generation and file persistence (API mode) or after vali
 - Method/Path: `POST https://<SNOW_INSTANCE_SUBDOMAIN>.service-now.com/api/sbom/core/upload`
 - Required query parameters: `businessApplicationId=<SNOW_BUSINESS_APPLICATION_ID>` and `sbomSource=<source>`, where `<source>` is `SnykAPI` when `RUN_MODE=SNYK_API` and `SnykCLI` when `RUN_MODE=SNYK_CLI`
 - Optional query parameter: `buildId=<effective-build-id>`, included only when the effective build ID is non-empty and encoded using Go's standard URL query encoding
-- Headers: `Authorization: Bearer <SNOW_ACCESS_TOKEN>` and `Content-Type: application/json`
+- Authentication header selected by `SNOW_AUTH_METHOD`:
+  - `BEARER`: `Authorization: Bearer <SNOW_ACCESS_TOKEN>`
+  - `BASIC`: `Authorization: Basic <base64(SNOW_USERNAME:SNOW_PASSWORD)>`
+- Content header: `Content-Type: application/json`
 - Body: the raw bytes of the SBOM file (equivalent to `curl --data-binary @<file>`)
 
 #### Scenario: Successful upload
@@ -23,6 +26,28 @@ After a successful SBOM generation and file persistence (API mode) or after vali
 - **WHEN** `RUN_MODE=SNYK_API`
 - **THEN** the upload uses `sbomSource=SnykAPI`
 - **AND** when `RUN_MODE=SNYK_CLI` the upload uses `sbomSource=SnykCLI`
+
+#### Scenario: Bearer authorization header
+
+- **WHEN** `SNOW_AUTH_METHOD=BEARER`
+- **THEN** the upload includes `Authorization: Bearer <SNOW_ACCESS_TOKEN>`
+- **AND** Basic credentials are not used
+
+#### Scenario: Basic authorization header
+
+- **WHEN** `SNOW_AUTH_METHOD=BASIC`
+- **THEN** the upload includes an `Authorization: Basic ...` header whose credential portion is the standard Base64 encoding of `SNOW_USERNAME:SNOW_PASSWORD`
+- **AND** `SNOW_ACCESS_TOKEN` is not used
+
+#### Scenario: Selected method controls authorization
+
+- **WHEN** credentials for both authentication methods are present
+- **THEN** the upload uses only the authorization scheme selected by `SNOW_AUTH_METHOD`
+
+#### Scenario: Credentials are confined to the authorization header
+
+- **WHEN** an SBOM upload request is constructed
+- **THEN** ServiceNow credentials are not included in the URL, query parameters, or request body
 
 #### Scenario: Neither build ID input is provided
 
@@ -62,19 +87,25 @@ After a successful SBOM generation and file persistence (API mode) or after vali
 
 #### Scenario: Existing required query parameters are preserved
 
-- **WHEN** an upload is constructed with or without an effective build ID
+- **WHEN** an upload is constructed with either authentication method and with or without an effective build ID
 - **THEN** `SNOW_BUSINESS_APPLICATION_ID` is sent unchanged as `businessApplicationId`
 - **AND** `sbomSource` continues to be selected from `RUN_MODE`
 
+#### Scenario: Authentication failure
+
+- **WHEN** ServiceNow returns HTTP 401 or 403 for either authentication method
+- **THEN** the utility terminates with exit code 2 (Authentication Failure)
+- **AND** the recommended next step names the credential variables for the selected method without exposing their values
+
 #### Scenario: Upload failure
 
-- **WHEN** the upload API returns an error or a malformed response
+- **WHEN** the upload API returns a non-authentication error or an invalid response
 - **THEN** the utility terminates with exit code 4 (ServiceNow Upload Failure)
 - **AND** the error message includes the operation, URL, HTTP status, and parsed error message
 
 #### Scenario: SBOM content not modified
 
-- **WHEN** the SBOM is uploaded
+- **WHEN** the SBOM is uploaded using either authentication method
 - **THEN** the payload sent to ServiceNow is byte-for-byte the SBOM file being uploaded
 
 ### Requirement: Dry-run mode

@@ -3,6 +3,7 @@ package servicenow
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -73,6 +74,7 @@ func (c *Client) Upload(ctx context.Context, path string) (map[string]any, error
 		c.logger.Info("Uploading SBOM to ServiceNow")
 		c.logger.Debug("Upload URL: %q", endpoint)
 		c.logger.Debug("SNOW_BUSINESS_APPLICATION_ID: %q", c.config.SnowBusinessApplicationID)
+		c.logger.Debug("SNOW_AUTH_METHOD: %q", c.authMethod())
 		c.logger.Debug("Build ID: %q", c.config.BuildID)
 		c.logger.Debug("SBOM File: %q", path)
 		c.logger.Debug("Payload Size: %d", len(payload))
@@ -83,7 +85,7 @@ func (c *Client) Upload(ctx context.Context, path string) (map[string]any, error
 		URL:       endpoint,
 		Operation: "servicenow.upload_sbom",
 		Headers: map[string]string{
-			"Authorization": "Bearer " + c.config.SnowAccessToken,
+			"Authorization": c.authorizationHeader(),
 			"Content-Type":  "application/json",
 			"Accept":        "application/json",
 		},
@@ -91,7 +93,7 @@ func (c *Client) Upload(ctx context.Context, path string) (map[string]any, error
 		Body:  payload,
 	})
 	if err != nil {
-		return nil, mapUploadError(err)
+		return nil, c.mapUploadError(err)
 	}
 
 	result := make(map[string]any)
@@ -107,9 +109,28 @@ func (c *Client) Upload(ctx context.Context, path string) (map[string]any, error
 	return result, nil
 }
 
-func mapUploadError(err error) error {
+func (c *Client) authMethod() string {
+	if c.config.SnowAuthMethod == config.SnowAuthBasic {
+		return config.SnowAuthBasic
+	}
+	return config.SnowAuthBearer
+}
+
+func (c *Client) authorizationHeader() string {
+	if c.authMethod() == config.SnowAuthBasic {
+		credentials := c.config.SnowUsername + ":" + c.config.SnowPassword
+		return "Basic " + base64.StdEncoding.EncodeToString([]byte(credentials))
+	}
+	return "Bearer " + c.config.SnowAccessToken
+}
+
+func (c *Client) mapUploadError(err error) error {
 	var appErr *apperr.Error
 	if errors.As(err, &appErr) && (appErr.Status == http.StatusUnauthorized || appErr.Status == http.StatusForbidden) {
+		nextStep := "Verify SNOW_ACCESS_TOKEN and that it has SBOM upload permission."
+		if c.authMethod() == config.SnowAuthBasic {
+			nextStep = "Verify SNOW_USERNAME, SNOW_PASSWORD, and that the account has SBOM upload permission."
+		}
 		return &apperr.Error{
 			Kind:     apperr.KindAuth,
 			Message:  "ServiceNow authentication failed.",
@@ -117,7 +138,7 @@ func mapUploadError(err error) error {
 			URL:      appErr.URL,
 			Status:   appErr.Status,
 			Detail:   appErr.Detail,
-			NextStep: "Verify SNOW_ACCESS_TOKEN and that it has SBOM upload permission.",
+			NextStep: nextStep,
 			Cause:    err,
 		}
 	}

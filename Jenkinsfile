@@ -2,8 +2,9 @@
 //
 // Jenkins prerequisites:
 //   * An agent with Go 1.22+ installed and network access to Snyk/ServiceNow.
-//   * Credentials Binding plugin (for string credentials).
+//   * Credentials Binding plugin.
 //   * Secret-text credentials containing the Snyk and ServiceNow tokens.
+//   * A username/password credential when ServiceNow Basic auth is selected.
 
 pipeline {
     agent any
@@ -25,6 +26,11 @@ pipeline {
             name: 'SNOW_APPLICATION_SCOPE',
             choices: ['SNYK_PROJECT', 'SNYK_TARGET', 'SNYK_ORG'],
             description: 'Snyk processing scope (SNYK_API mode only).'
+        )
+        choice(
+            name: 'SNOW_AUTH_METHOD',
+            choices: ['BEARER', 'BASIC'],
+            description: 'ServiceNow REST API authentication method.'
         )
         booleanParam(
             name: 'API_DRY_RUN',
@@ -52,15 +58,16 @@ pipeline {
         string(name: 'HTTP_TIMEOUT_SECONDS', defaultValue: '60', description: 'Per-request HTTP timeout.', trim: true)
         booleanParam(name: 'SSL_VERIFY', defaultValue: true, description: 'Verify TLS certificates.')
         string(name: 'CA_BUNDLE', defaultValue: '', description: 'Optional workspace/agent path to a PEM CA bundle.', trim: true)
-        string(name: 'VERSION', defaultValue: '2.1.0', description: 'Semantic version embedded in the binary.', trim: true)
+        string(name: 'VERSION', defaultValue: '2.2.0', description: 'Semantic version embedded in the binary.', trim: true)
     }
 
     environment {
         GO_MODULE_DIR = 'go'
         APP_NAME = 'snyk-sbom-to-servicenow'
-        // Update these two IDs to match Secret Text credentials in Jenkins.
+        // Update these IDs to match credentials configured in Jenkins.
         SNYK_TOKEN_CREDENTIAL_ID = 'snyk-api-token'
         SNOW_TOKEN_CREDENTIAL_ID = 'servicenow-access-token'
+        SNOW_BASIC_CREDENTIAL_ID = 'servicenow-basic-credentials'
     }
 
     stages {
@@ -81,6 +88,9 @@ pipeline {
 
                     requireValue(params.SNOW_INSTANCE_SUBDOMAIN, 'SNOW_INSTANCE_SUBDOMAIN')
                     requireValue(params.SNOW_BUSINESS_APPLICATION_ID, 'SNOW_BUSINESS_APPLICATION_ID')
+                    if (!(params.SNOW_AUTH_METHOD in ['BEARER', 'BASIC'])) {
+                        error('SNOW_AUTH_METHOD must be BEARER or BASIC.')
+                    }
                     if (!(params.SNOW_INSTANCE_SUBDOMAIN ==~ /^[A-Za-z0-9-]+$/)) {
                         error('SNOW_INSTANCE_SUBDOMAIN may contain only letters, digits, and hyphens.')
                     }
@@ -149,16 +159,26 @@ pipeline {
                         "SNYK_SBOM_FORMAT=${params.SNYK_SBOM_FORMAT}",
                         "SNOW_INSTANCE_SUBDOMAIN=${params.SNOW_INSTANCE_SUBDOMAIN}",
                         "SNOW_BUSINESS_APPLICATION_ID=${params.SNOW_BUSINESS_APPLICATION_ID}",
+                        "SNOW_AUTH_METHOD=${params.SNOW_AUTH_METHOD}",
                         "DEBUG_LEVEL=${params.DEBUG_LEVEL}",
                         "HTTP_TIMEOUT_SECONDS=${params.HTTP_TIMEOUT_SECONDS}",
                         "SSL_VERIFY=${params.SSL_VERIFY}",
                         "CA_BUNDLE=${params.CA_BUNDLE}"
                     ]
 
-                    def snowCredential = string(
-                        credentialsId: env.SNOW_TOKEN_CREDENTIAL_ID,
-                        variable: 'SNOW_ACCESS_TOKEN'
-                    )
+                    def snowCredential
+                    if (params.SNOW_AUTH_METHOD == 'BASIC') {
+                        snowCredential = usernamePassword(
+                            credentialsId: env.SNOW_BASIC_CREDENTIAL_ID,
+                            usernameVariable: 'SNOW_USERNAME',
+                            passwordVariable: 'SNOW_PASSWORD'
+                        )
+                    } else {
+                        snowCredential = string(
+                            credentialsId: env.SNOW_TOKEN_CREDENTIAL_ID,
+                            variable: 'SNOW_ACCESS_TOKEN'
+                        )
+                    }
 
                     if (params.RUN_MODE == 'SNYK_CLI') {
                         withEnv(commonEnvironment + ["SBOM_FILE_PATH=${params.SBOM_FILE_PATH}"]) {

@@ -1,40 +1,59 @@
-# v2.1.0 — Optional ServiceNow Build ID
+# v2.2.0 — ServiceNow Basic Authentication
 
-This release adds an optional ServiceNow `buildId` to SBOM upload requests so
-uploads from multiple repositories can be associated with the same build.
+This backward-compatible release adds selectable Bearer or Basic
+authentication for ServiceNow SBOM uploads. Existing deployments continue to
+use Bearer authentication when `SNOW_AUTH_METHOD` is unset.
 
 ## Changes
 
-- Accept an optional build ID from the `BUILD_ID` environment variable.
-- Accept an optional `--buildid` command-line argument in both Snyk API and
-  Snyk CLI modes.
-- Give `--buildid` precedence over `BUILD_ID`, including an explicitly empty
-  `--buildid=` value.
-- Omit `buildId` when neither input supplies a non-empty value, preserving
-  compatibility with existing deployments.
-- URL-encode spaces and reserved characters in build IDs.
-- Preserve the existing `businessApplicationId`, `sbomSource`, authentication,
-  and SBOM payload behavior.
+- Add `SNOW_AUTH_METHOD` with case-insensitive `BEARER` and `BASIC` values.
+- Keep `BEARER` as the default and continue using `SNOW_ACCESS_TOKEN`.
+- Add Basic authentication using `SNOW_USERNAME` and `SNOW_PASSWORD`.
+- Validate only the credentials required by the selected authentication method
+  before making a network request.
+- Generate the standard HTTP Basic authorization value from
+  `username:password`.
+- Keep authorization headers, usernames, passwords, and tokens redacted from
+  logs and diagnostics.
+- Provide method-specific guidance for ServiceNow HTTP 401/403 responses.
+- Add a Jenkins authentication-method choice that conditionally binds either a
+  Secret Text bearer token or a username/password credential.
 
-## Usage
+The ServiceNow upload endpoint, query parameters, SBOM payload, build ID
+behavior, and Snyk API/CLI workflows are unchanged.
 
-Use an environment variable:
+## Configuration
 
-```bash
-RUN_MODE=SNYK_API BUILD_ID='release 2026.10.13 / build #42' \
-  ./snyk-sbom-to-servicenow
+Bearer authentication remains the default:
+
+```dotenv
+SNOW_AUTH_METHOD=BEARER
+SNOW_ACCESS_TOKEN=your-access-token
 ```
 
-Or pass the command-line argument:
+To use Basic authentication:
 
-```bash
-./snyk-sbom-to-servicenow \
-  --sbom-file-path ./sbom.json \
-  --buildid='release 2026.10.13 / build #42'
+```dotenv
+SNOW_AUTH_METHOD=BASIC
+SNOW_USERNAME=your-service-account
+SNOW_PASSWORD=your-service-account-password
 ```
 
-When both inputs are present, the command-line value wins. Use `--buildid=` to
-explicitly suppress an environment-provided value.
+Basic authentication encodes credentials but does not encrypt them. Keep
+`SSL_VERIFY=true` and configure `CA_BUNDLE` when ServiceNow uses a private
+corporate certificate authority.
+
+## Validation
+
+- Bearer authentication was successfully tested against the staging
+  environment.
+- Basic authentication configuration, exact authorization-header generation,
+  credential selection, error guidance, and secret redaction are covered by
+  automated tests.
+- Basic authentication was not exercised against a live ServiceNow environment
+  because an appropriate test environment was not available for this release.
+- Go formatting, vetting, unit tests, cross-compilation, and strict OpenSpec
+  validation passed.
 
 ## Distribution
 
