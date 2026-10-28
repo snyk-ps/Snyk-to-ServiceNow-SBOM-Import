@@ -90,6 +90,139 @@ func TestDefaultCLIModeDoesNotRequireSnykAPISettings(t *testing.T) {
 	if cfg.SBOMSource() != "SnykCLI" {
 		t.Fatalf("SBOMSource() = %q, want SnykCLI", cfg.SBOMSource())
 	}
+	if cfg.SnowAuthMethod != config.SnowAuthBearer {
+		t.Fatalf(
+			"SnowAuthMethod = %q, want %q",
+			cfg.SnowAuthMethod,
+			config.SnowAuthBearer,
+		)
+	}
+}
+
+func TestServiceNowAuthenticationMethods(t *testing.T) {
+	tests := []struct {
+		name              string
+		env               map[string]string
+		wantMethod        string
+		wantUsername      string
+		wantPassword      string
+		wantErrorContains []string
+	}{
+		{
+			name:       "default bearer",
+			env:        snowEnv(),
+			wantMethod: config.SnowAuthBearer,
+		},
+		{
+			name: "bearer is normalized",
+			env: merge(snowCommonEnv(), map[string]string{
+				"SNOW_AUTH_METHOD":  " BeArEr ",
+				"SNOW_ACCESS_TOKEN": "token",
+			}),
+			wantMethod: config.SnowAuthBearer,
+		},
+		{
+			name: "basic is normalized and does not require token",
+			env: merge(snowCommonEnv(), map[string]string{
+				"SNOW_AUTH_METHOD": "basic",
+				"SNOW_USERNAME":    "service-user",
+				"SNOW_PASSWORD":    "service-password",
+			}),
+			wantMethod:   config.SnowAuthBasic,
+			wantUsername: "service-user",
+			wantPassword: "service-password",
+		},
+		{
+			name: "basic ignores inactive bearer placeholder",
+			env: merge(snowCommonEnv(), map[string]string{
+				"SNOW_AUTH_METHOD":  config.SnowAuthBasic,
+				"SNOW_USERNAME":     "service-user",
+				"SNOW_PASSWORD":     "service-password",
+				"SNOW_ACCESS_TOKEN": "MY_UNUSED_TOKEN",
+			}),
+			wantMethod:   config.SnowAuthBasic,
+			wantUsername: "service-user",
+			wantPassword: "service-password",
+		},
+		{
+			name: "bearer ignores inactive basic placeholders",
+			env: merge(snowEnv(), map[string]string{
+				"SNOW_USERNAME": "MY_UNUSED_USERNAME",
+				"SNOW_PASSWORD": "MY_UNUSED_PASSWORD",
+			}),
+			wantMethod:   config.SnowAuthBearer,
+			wantUsername: "MY_UNUSED_USERNAME",
+			wantPassword: "MY_UNUSED_PASSWORD",
+		},
+		{
+			name: "unsupported method",
+			env: merge(snowEnv(), map[string]string{
+				"SNOW_AUTH_METHOD": "OAUTH",
+			}),
+			wantErrorContains: []string{"SNOW_AUTH_METHOD", "BEARER", "BASIC"},
+		},
+		{
+			name: "bearer requires token",
+			env:  snowCommonEnv(),
+			wantErrorContains: []string{
+				"SNOW_ACCESS_TOKEN",
+			},
+		},
+		{
+			name: "basic requires username and password",
+			env: merge(snowCommonEnv(), map[string]string{
+				"SNOW_AUTH_METHOD": config.SnowAuthBasic,
+			}),
+			wantErrorContains: []string{"SNOW_USERNAME", "SNOW_PASSWORD"},
+		},
+		{
+			name: "selected basic placeholder fails",
+			env: merge(snowCommonEnv(), map[string]string{
+				"SNOW_AUTH_METHOD": config.SnowAuthBasic,
+				"SNOW_USERNAME":    "MY_SNOW_USERNAME",
+				"SNOW_PASSWORD":    "service-password",
+			}),
+			wantErrorContains: []string{
+				"placeholder",
+				"SNOW_USERNAME",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg, err := config.LoadWithEnvironment(
+				filepath.Join(t.TempDir(), ".env"),
+				test.env,
+			)
+			if len(test.wantErrorContains) > 0 {
+				if err == nil {
+					t.Fatal("expected configuration error")
+				}
+				if got := apperr.ExitCode(err); got != apperr.ExitConfig {
+					t.Fatalf("exit code = %d, want %d", got, apperr.ExitConfig)
+				}
+				for _, expected := range test.wantErrorContains {
+					if !strings.Contains(err.Error(), expected) {
+						t.Errorf("error = %q, want substring %q", err, expected)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadWithEnvironment() error = %v", err)
+			}
+			if cfg.SnowAuthMethod != test.wantMethod {
+				t.Errorf("SnowAuthMethod = %q, want %q", cfg.SnowAuthMethod, test.wantMethod)
+			}
+			if cfg.SnowUsername != test.wantUsername {
+				t.Errorf("SnowUsername = %q, want %q", cfg.SnowUsername, test.wantUsername)
+			}
+			if cfg.SnowPassword != test.wantPassword {
+				t.Errorf("SnowPassword = %q, want %q", cfg.SnowPassword, test.wantPassword)
+			}
+		})
+	}
 }
 
 func TestAPIModeDefaultsAndEnvPrecedence(t *testing.T) {
@@ -236,9 +369,14 @@ func TestBuildIDDoesNotMakeBusinessApplicationOptional(t *testing.T) {
 }
 
 func snowEnv() map[string]string {
+	return merge(snowCommonEnv(), map[string]string{
+		"SNOW_ACCESS_TOKEN": "snow-token",
+	})
+}
+
+func snowCommonEnv() map[string]string {
 	return map[string]string{
 		"SNOW_INSTANCE_SUBDOMAIN":      "instance",
-		"SNOW_ACCESS_TOKEN":            "snow-token",
 		"SNOW_BUSINESS_APPLICATION_ID": "app-id",
 	}
 }

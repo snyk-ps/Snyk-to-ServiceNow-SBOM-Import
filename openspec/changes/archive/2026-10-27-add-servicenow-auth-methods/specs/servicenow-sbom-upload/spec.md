@@ -1,0 +1,106 @@
+## MODIFIED Requirements
+
+### Requirement: SBOM upload
+
+After a successful SBOM generation and file persistence (API mode) or after validating a provided SBOM file (CLI mode), the utility SHALL upload the SBOM file to the ServiceNow SBOM ingestion API and validate the response. The request MUST be:
+
+- Method/Path: `POST https://<SNOW_INSTANCE_SUBDOMAIN>.service-now.com/api/sbom/core/upload`
+- Required query parameters: `businessApplicationId=<SNOW_BUSINESS_APPLICATION_ID>` and `sbomSource=<source>`, where `<source>` is `SnykAPI` when `RUN_MODE=SNYK_API` and `SnykCLI` when `RUN_MODE=SNYK_CLI`
+- Optional query parameter: `buildId=<effective-build-id>`, included only when the effective build ID is non-empty and encoded using Go's standard URL query encoding
+- Authentication header selected by `SNOW_AUTH_METHOD`:
+  - `BEARER`: `Authorization: Bearer <SNOW_ACCESS_TOKEN>`
+  - `BASIC`: `Authorization: Basic <base64(SNOW_USERNAME:SNOW_PASSWORD)>`
+- Content header: `Content-Type: application/json`
+- Body: the raw bytes of the SBOM file (equivalent to `curl --data-binary @<file>`)
+
+#### Scenario: Successful upload
+
+- **WHEN** the ServiceNow SBOM upload API returns a success response
+- **THEN** the utility logs success details and terminates with exit code 0
+
+#### Scenario: Source reflects run mode
+
+- **WHEN** `RUN_MODE=SNYK_API`
+- **THEN** the upload uses `sbomSource=SnykAPI`
+- **AND** when `RUN_MODE=SNYK_CLI` the upload uses `sbomSource=SnykCLI`
+
+#### Scenario: Bearer authorization header
+
+- **WHEN** `SNOW_AUTH_METHOD=BEARER`
+- **THEN** the upload includes `Authorization: Bearer <SNOW_ACCESS_TOKEN>`
+- **AND** Basic credentials are not used
+
+#### Scenario: Basic authorization header
+
+- **WHEN** `SNOW_AUTH_METHOD=BASIC`
+- **THEN** the upload includes an `Authorization: Basic ...` header whose credential portion is the standard Base64 encoding of `SNOW_USERNAME:SNOW_PASSWORD`
+- **AND** `SNOW_ACCESS_TOKEN` is not used
+
+#### Scenario: Selected method controls authorization
+
+- **WHEN** credentials for both authentication methods are present
+- **THEN** the upload uses only the authorization scheme selected by `SNOW_AUTH_METHOD`
+
+#### Scenario: Credentials are confined to the authorization header
+
+- **WHEN** an SBOM upload request is constructed
+- **THEN** ServiceNow credentials are not included in the URL, query parameters, or request body
+
+#### Scenario: Neither build ID input is provided
+
+- **WHEN** neither `BUILD_ID` nor `--buildid` is provided
+- **THEN** the upload proceeds without a `buildId` query parameter
+
+#### Scenario: Environment build ID is uploaded
+
+- **WHEN** only `BUILD_ID` is set to a non-empty value
+- **THEN** the upload includes that value as the `buildId` query parameter
+
+#### Scenario: Command-line build ID is uploaded
+
+- **WHEN** only `--buildid` is provided with a non-empty value
+- **THEN** the upload includes that value as the `buildId` query parameter
+
+#### Scenario: Command-line build ID takes precedence
+
+- **WHEN** both `BUILD_ID` and `--buildid` are provided with non-empty values
+- **THEN** the upload includes the command-line value as the `buildId` query parameter
+
+#### Scenario: Effective build ID is empty
+
+- **WHEN** the effective build ID is empty or whitespace-only
+- **THEN** the upload proceeds without a `buildId` query parameter
+
+#### Scenario: Explicitly empty command-line build ID suppresses environment value
+
+- **WHEN** `BUILD_ID` is non-empty and `--buildid` is explicitly provided with an empty value
+- **THEN** the upload proceeds without a `buildId` query parameter
+
+#### Scenario: Build ID is URL encoded
+
+- **WHEN** the effective build ID contains spaces or URL-reserved characters
+- **THEN** the request URL encodes the `buildId` query value using Go's standard URL query encoding
+- **AND** ServiceNow receives a decoded `buildId` value equal to the effective build ID
+
+#### Scenario: Existing required query parameters are preserved
+
+- **WHEN** an upload is constructed with either authentication method and with or without an effective build ID
+- **THEN** `SNOW_BUSINESS_APPLICATION_ID` is sent unchanged as `businessApplicationId`
+- **AND** `sbomSource` continues to be selected from `RUN_MODE`
+
+#### Scenario: Authentication failure
+
+- **WHEN** ServiceNow returns HTTP 401 or 403 for either authentication method
+- **THEN** the utility terminates with exit code 2 (Authentication Failure)
+- **AND** the recommended next step names the credential variables for the selected method without exposing their values
+
+#### Scenario: Upload failure
+
+- **WHEN** the upload API returns a non-authentication error or an invalid response
+- **THEN** the utility terminates with exit code 4 (ServiceNow Upload Failure)
+- **AND** the error message includes the operation, URL, HTTP status, and parsed error message
+
+#### Scenario: SBOM content not modified
+
+- **WHEN** the SBOM is uploaded using either authentication method
+- **THEN** the payload sent to ServiceNow is byte-for-byte the SBOM file being uploaded

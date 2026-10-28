@@ -1,6 +1,6 @@
 # Go implementation
 
-**Version:** 2.1.0
+**Version:** 2.2.0
 **Default run mode:** `SNYK_CLI`
 
 This directory contains the standalone Go implementation of the Snyk SBOM →
@@ -24,7 +24,7 @@ make build
 Build Linux, macOS, and Windows release binaries for amd64/arm64:
 
 ```bash
-make cross-compile VERSION=2.1.0
+make cross-compile VERSION=2.2.0
 ```
 
 Artifacts are written to `go/dist/`.
@@ -55,6 +55,30 @@ BUILD_ID='environment-build' \
 when explicitly empty; use `--buildid=` to suppress an environment value.
 When the effective value is empty, the upload omits `buildId`. Spaces and
 special characters are URL encoded automatically.
+
+## ServiceNow authentication
+
+`SNOW_AUTH_METHOD` accepts `BEARER` (the backward-compatible default) or
+`BASIC`, case-insensitively. Configure one credential set in `.env`:
+
+```dotenv
+# Bearer
+SNOW_AUTH_METHOD=BEARER
+SNOW_ACCESS_TOKEN=your-access-token
+
+# Or Basic
+SNOW_AUTH_METHOD=BASIC
+SNOW_USERNAME=your-service-account
+SNOW_PASSWORD=your-service-account-password
+```
+
+Only the selected method's credentials are required. Invalid methods and
+missing selected credentials fail before network activity; ServiceNow 401/403
+responses identify the relevant variable names without exposing values.
+
+Basic authentication is Base64 encoding, not encryption. Keep
+`SSL_VERIFY=true`; configure `CA_BUNDLE` when a private CA is required. See the
+root README for complete migration, Jenkins, and troubleshooting guidance.
 
 Use `--version` for the embedded semantic version and `--help` for flags.
 

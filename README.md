@@ -1,6 +1,6 @@
 # Snyk SBOM → ServiceNow Upload Utility
 
-**Go release:** 2.1.0
+**Go release:** 2.2.0
 
 A standalone Go command that exports Software Bills of Materials from Snyk and
 uploads them to ServiceNow Vulnerability Response. Customer deployments receive
@@ -13,6 +13,7 @@ required on the target host.
 - Project, target, and organization API scopes
 - Timestamped JSON SBOM files
 - ServiceNow `sbomSource=SnykAPI` / `SnykCLI`
+- ServiceNow Bearer or Basic authentication
 - Optional ServiceNow build ID from `BUILD_ID` or `--buildid`
 - Paginated Snyk discovery
 - Unsupported project types are skipped rather than failed
@@ -80,7 +81,7 @@ Build the complete customer release matrix:
 
 ```bash
 cd go
-make cross-compile VERSION=2.1.0
+make cross-compile VERSION=2.2.0
 ```
 
 Release artifacts are written to `go/dist/`. Use `--version` for the embedded
@@ -98,10 +99,12 @@ Jenkins agent requirements:
 - Go 1.22 or newer
 - Network access to the selected Snyk and ServiceNow endpoints
 - Jenkins Credentials Binding plugin
-- Secret Text credentials for the Snyk API token and ServiceNow access token.
-  The Jenkinsfile defaults to credential IDs `snyk-api-token` and
-  `servicenow-access-token`; edit `SNYK_TOKEN_CREDENTIAL_ID` and
-  `SNOW_TOKEN_CREDENTIAL_ID` in its `environment` block if your IDs differ.
+- A Secret Text credential for the Snyk API token.
+- For ServiceNow, either a Secret Text bearer-token credential or a Jenkins
+  Username with password credential for Basic authentication. The Jenkinsfile
+  defaults to credential IDs `servicenow-access-token` and
+  `servicenow-basic-credentials`; edit `SNOW_TOKEN_CREDENTIAL_ID` or
+  `SNOW_BASIC_CREDENTIAL_ID` in its `environment` block if your IDs differ.
 
 Create a Pipeline or Multibranch Pipeline job using **Pipeline script from
 SCM** and leave the script path as `Jenkinsfile`. Configure the job parameters
@@ -109,14 +112,16 @@ on the first run:
 
 - `RUN_MODE`: `SNYK_API` or `SNYK_CLI`
 - `SNOW_APPLICATION_SCOPE`: project, target, or org (API mode)
+- `SNOW_AUTH_METHOD`: `BEARER` (default) or `BASIC`
 - Snyk/ServiceNow IDs
 - `API_DRY_RUN` (defaults to true)
 - `SBOM_FILE_PATH` (required for CLI mode; file must exist in the workspace)
 
-Tokens are bound with fixed `withCredentials` IDs (not build parameters), shell
-tracing is disabled during execution, application logs redact authorization
-values, and endpoint parameters are validated to prevent credential forwarding
-to arbitrary hosts. Restrict job configuration/build permissions as usual for
+Credentials are bound with fixed `withCredentials` IDs according to the
+selected authentication method (not passed as build parameters), shell tracing
+is disabled during execution, application logs redact authorization values,
+and endpoint parameters are validated to prevent credential forwarding to
+arbitrary hosts. Restrict job configuration/build permissions as usual for
 credentialed pipelines.
 
 ## Run modes
@@ -163,8 +168,14 @@ Environment variables override values from `.env`.
 Always required:
 
 - `SNOW_INSTANCE_SUBDOMAIN`
-- `SNOW_ACCESS_TOKEN`
 - `SNOW_BUSINESS_APPLICATION_ID`
+
+ServiceNow authentication requirements:
+
+| `SNOW_AUTH_METHOD` | Required credentials |
+| --- | --- |
+| `BEARER` (default) | `SNOW_ACCESS_TOKEN` |
+| `BASIC` | `SNOW_USERNAME`, `SNOW_PASSWORD` |
 
 Additionally required in API mode:
 
@@ -178,6 +189,7 @@ Optional defaults:
 | --- | --- |
 | `RUN_MODE` | `SNYK_CLI` |
 | `SNOW_APPLICATION_SCOPE` | `SNYK_PROJECT` |
+| `SNOW_AUTH_METHOD` | `BEARER` |
 | `SNYK_BASE_URL` | `https://api.snyk.io/rest` |
 | `SNYK_SBOM_FORMAT` | `cyclonedx1.6+json` |
 | `DEBUG_LEVEL` | `INFO` |
@@ -186,6 +198,35 @@ Optional defaults:
 | `SSL_VERIFY` | `true` |
 | `CA_BUNDLE` | unset |
 | `BUILD_ID` | unset (`buildId` omitted) |
+
+### ServiceNow authentication
+
+Existing deployments require no change: an unset `SNOW_AUTH_METHOD` defaults
+to bearer authentication and continues to use `SNOW_ACCESS_TOKEN`.
+
+Bearer configuration:
+
+```dotenv
+SNOW_AUTH_METHOD=BEARER
+SNOW_ACCESS_TOKEN=your-access-token
+```
+
+Basic configuration:
+
+```dotenv
+SNOW_AUTH_METHOD=BASIC
+SNOW_USERNAME=your-service-account
+SNOW_PASSWORD=your-service-account-password
+```
+
+Authentication-method values are case-insensitive. Unsupported values or
+missing credentials for the selected method fail with exit code 1 before any
+network request. HTTP 401/403 responses produce exit code 2 and identify which
+credential variables to verify without logging their values.
+
+Basic authentication only Base64-encodes the username and password; it does
+not encrypt them. Use verified HTTPS, keep `SSL_VERIFY=true`, and use
+`CA_BUNDLE` for a private corporate CA rather than disabling verification.
 
 ### Optional build ID
 
@@ -223,6 +264,7 @@ POST https://<instance>.service-now.com/api/sbom/core/upload
      ?businessApplicationId=<id>&sbomSource=<SnykAPI|SnykCLI>
      [&buildId=<optional-build-id>]
 Authorization: Bearer <SNOW_ACCESS_TOKEN>
+# or: Authorization: Basic <base64(SNOW_USERNAME:SNOW_PASSWORD)>
 Content-Type: application/json
 Body: unmodified SBOM file bytes
 ```

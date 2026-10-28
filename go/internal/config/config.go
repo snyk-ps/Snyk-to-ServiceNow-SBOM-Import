@@ -17,6 +17,10 @@ const (
 	ModeCLI        = "SNYK_CLI"
 	DefaultRunMode = ModeCLI
 
+	SnowAuthBearer        = "BEARER"
+	SnowAuthBasic         = "BASIC"
+	DefaultSnowAuthMethod = SnowAuthBearer
+
 	ScopeProject = "SNYK_PROJECT"
 	ScopeTarget  = "SNYK_TARGET"
 	ScopeOrg     = "SNYK_ORG"
@@ -28,13 +32,17 @@ const (
 )
 
 var (
-	validRunModes = []string{ModeAPI, ModeCLI}
-	validScopes   = []string{ScopeProject, ScopeTarget, ScopeOrg}
+	validRunModes        = []string{ModeAPI, ModeCLI}
+	validScopes          = []string{ScopeProject, ScopeTarget, ScopeOrg}
+	validSnowAuthMethods = []string{SnowAuthBearer, SnowAuthBasic}
 
-	snowRequired = []string{
+	snowCommonRequired = []string{
 		"SNOW_INSTANCE_SUBDOMAIN",
-		"SNOW_ACCESS_TOKEN",
 		"SNOW_BUSINESS_APPLICATION_ID",
+	}
+	snowAuthRequired = map[string][]string{
+		SnowAuthBearer: {"SNOW_ACCESS_TOKEN"},
+		SnowAuthBasic:  {"SNOW_USERNAME", "SNOW_PASSWORD"},
 	}
 	apiRequired = []string{
 		"SNYK_API_TOKEN",
@@ -61,7 +69,10 @@ type Config struct {
 	SnykSBOMFormat     string
 
 	SnowInstanceSubdomain     string
+	SnowAuthMethod            string
 	SnowAccessToken           string
+	SnowUsername              string
+	SnowPassword              string
 	SnowBusinessApplicationID string
 	SnowApplicationScope      string
 	BuildID                   string
@@ -131,6 +142,20 @@ func LoadWithEnvironment(dotEnvPath string, environment map[string]string) (Conf
 		}
 	}
 
+	snowAuthMethod := strings.ToUpper(get(values, "SNOW_AUTH_METHOD", DefaultSnowAuthMethod))
+	if !contains(validSnowAuthMethods, snowAuthMethod) {
+		return Config{}, &apperr.Error{
+			Kind: apperr.KindConfig,
+			Message: fmt.Sprintf(
+				"Invalid SNOW_AUTH_METHOD: %q. Accepted values: %s.",
+				snowAuthMethod,
+				strings.Join(validSnowAuthMethods, ", "),
+			),
+			Op:       "load_config",
+			NextStep: "Set SNOW_AUTH_METHOD to one of: " + strings.Join(validSnowAuthMethods, ", ") + ".",
+		}
+	}
+
 	scope := strings.ToUpper(get(values, "SNOW_APPLICATION_SCOPE", ScopeProject))
 	if !contains(validScopes, scope) {
 		return Config{}, &apperr.Error{
@@ -141,13 +166,14 @@ func LoadWithEnvironment(dotEnvPath string, environment map[string]string) (Conf
 		}
 	}
 
-	required := append([]string{}, snowRequired...)
+	required := append([]string{}, snowCommonRequired...)
+	required = append(required, snowAuthRequired[snowAuthMethod]...)
 	if runMode == ModeAPI {
 		required = append(required, apiRequired...)
 		required = append(required, scopeRequired[scope]...)
 	}
 	if missing := missingKeys(values, required); len(missing) > 0 {
-		context := "RUN_MODE " + runMode
+		context := "SNOW_AUTH_METHOD " + snowAuthMethod + " / RUN_MODE " + runMode
 		if runMode == ModeAPI {
 			context += " / scope " + scope
 		}
@@ -180,7 +206,10 @@ func LoadWithEnvironment(dotEnvPath string, environment map[string]string) (Conf
 		SnykSBOMFormat:     get(values, "SNYK_SBOM_FORMAT", DefaultSBOMFormat),
 
 		SnowInstanceSubdomain:     get(values, "SNOW_INSTANCE_SUBDOMAIN", ""),
+		SnowAuthMethod:            snowAuthMethod,
 		SnowAccessToken:           get(values, "SNOW_ACCESS_TOKEN", ""),
+		SnowUsername:              get(values, "SNOW_USERNAME", ""),
+		SnowPassword:              get(values, "SNOW_PASSWORD", ""),
 		SnowBusinessApplicationID: get(values, "SNOW_BUSINESS_APPLICATION_ID", ""),
 		SnowApplicationScope:      scope,
 		BuildID:                   get(values, "BUILD_ID", ""),
@@ -218,12 +247,23 @@ func rejectPlaceholders(cfg Config) error {
 	uploadWillHappen := !(cfg.RunMode == ModeAPI && cfg.APIDryRun)
 	if uploadWillHappen {
 		checks["SNOW_INSTANCE_SUBDOMAIN"] = cfg.SnowInstanceSubdomain
-		checks["SNOW_ACCESS_TOKEN"] = cfg.SnowAccessToken
 		checks["SNOW_BUSINESS_APPLICATION_ID"] = cfg.SnowBusinessApplicationID
+		switch cfg.SnowAuthMethod {
+		case SnowAuthBasic:
+			checks["SNOW_USERNAME"] = cfg.SnowUsername
+			checks["SNOW_PASSWORD"] = cfg.SnowPassword
+		default:
+			checks["SNOW_ACCESS_TOKEN"] = cfg.SnowAccessToken
+		}
 	}
 
 	placeholders := make([]string, 0)
-	for _, name := range append(append([]string{}, apiRequired...), append(scopeRequired[ScopeProject], snowRequired...)...) {
+	placeholderNames := append([]string{}, apiRequired...)
+	placeholderNames = append(placeholderNames, scopeRequired[ScopeProject]...)
+	placeholderNames = append(placeholderNames, snowCommonRequired...)
+	placeholderNames = append(placeholderNames, snowAuthRequired[SnowAuthBearer]...)
+	placeholderNames = append(placeholderNames, snowAuthRequired[SnowAuthBasic]...)
+	for _, name := range placeholderNames {
 		if value, ok := checks[name]; ok && strings.HasPrefix(value, "MY_") {
 			placeholders = append(placeholders, name)
 		}

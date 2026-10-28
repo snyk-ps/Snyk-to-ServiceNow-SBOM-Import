@@ -2,6 +2,8 @@ package servicenow_test
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/snyk-ps/snyk-sbom-to-servicenow/internal/apperr"
 	"github.com/snyk-ps/snyk-sbom-to-servicenow/internal/config"
 	"github.com/snyk-ps/snyk-sbom-to-servicenow/internal/httpx"
 	applog "github.com/snyk-ps/snyk-sbom-to-servicenow/internal/logging"
@@ -79,6 +82,173 @@ func TestUploadUsesModeSpecificSourceAndUnmodifiedBytes(t *testing.T) {
 			)
 			if _, err := client.Upload(context.Background(), path); err != nil {
 				t.Fatalf("Upload() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestUploadUsesSelectedServiceNowAuthentication(t *testing.T) {
+	payload := []byte(`{"bomFormat":"CycloneDX"}`)
+	path := filepath.Join(t.TempDir(), "sbom.json")
+	if err := os.WriteFile(path, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	token := derivedTestValue(t, "t")
+	username := derivedTestValue(t, "u")
+	password := derivedTestValue(t, "p")
+	basicCredentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	tests := []struct {
+		name       string
+		authMethod string
+		wantHeader string
+	}{
+		{
+			name:       "bearer uses token when both credential sets exist",
+			authMethod: config.SnowAuthBearer,
+			wantHeader: "Bearer " + token,
+		},
+		{
+			name:       "basic uses username and password when both credential sets exist",
+			authMethod: config.SnowAuthBasic,
+			wantHeader: "Basic " + basicCredentials,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("Authorization"); got != test.wantHeader {
+					t.Errorf("Authorization = %q, want %q", got, test.wantHeader)
+				}
+				if got := r.URL.Query().Get("businessApplicationId"); got != "app-id" {
+					t.Errorf("businessApplicationId = %q, want app-id", got)
+				}
+				if got := r.URL.Query().Get("sbomSource"); got != "SnykCLI" {
+					t.Errorf("sbomSource = %q, want SnykCLI", got)
+				}
+				for _, credential := range []string{token, username, password} {
+					if strings.Contains(r.URL.String(), credential) {
+						t.Errorf("URL contains credential %q", credential)
+					}
+				}
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(body) != string(payload) {
+					t.Errorf("body = %q, want %q", body, payload)
+				}
+				for _, credential := range []string{token, username, password} {
+					if strings.Contains(string(body), credential) {
+						t.Errorf("body contains credential %q", credential)
+					}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"result":"ok"}`)
+			}))
+			defer server.Close()
+
+			logger := applog.New("ERROR", io.Discard)
+			cfg := config.Config{
+				SnowAuthMethod:            test.authMethod,
+				SnowAccessToken:           token,
+				SnowUsername:              username,
+				SnowPassword:              password,
+				SnowBusinessApplicationID: "app-id",
+				RunMode:                   config.ModeCLI,
+				HTTPTimeout:               time.Second,
+			}
+			client := servicenow.NewWithBaseURL(
+				cfg,
+				httpx.NewWithHTTPClient(server.Client(), logger),
+				logger,
+				server.URL,
+			)
+			if _, err := client.Upload(context.Background(), path); err != nil {
+				t.Fatalf("Upload() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestAuthenticationFailureGuidanceMatchesSelectedMethod(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sbom.json")
+	if err := os.WriteFile(path, []byte(`{"bomFormat":"CycloneDX"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	token := derivedTestValue(t, "t")
+	username := derivedTestValue(t, "u")
+	password := derivedTestValue(t, "p")
+
+	tests := []struct {
+		name          string
+		authMethod    string
+		status        int
+		wantVariables []string
+	}{
+		{
+			name:          "bearer unauthorized",
+			authMethod:    config.SnowAuthBearer,
+			status:        http.StatusUnauthorized,
+			wantVariables: []string{"SNOW_ACCESS_TOKEN"},
+		},
+		{
+			name:          "basic forbidden",
+			authMethod:    config.SnowAuthBasic,
+			status:        http.StatusForbidden,
+			wantVariables: []string{"SNOW_USERNAME", "SNOW_PASSWORD"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, "denied", test.status)
+			}))
+			defer server.Close()
+
+			logger := applog.New("ERROR", io.Discard)
+			cfg := config.Config{
+				SnowAuthMethod:            test.authMethod,
+				SnowAccessToken:           token,
+				SnowUsername:              username,
+				SnowPassword:              password,
+				SnowBusinessApplicationID: "app-id",
+				RunMode:                   config.ModeCLI,
+				HTTPTimeout:               time.Second,
+			}
+			client := servicenow.NewWithBaseURL(
+				cfg,
+				httpx.NewWithHTTPClient(server.Client(), logger),
+				logger,
+				server.URL,
+			)
+			_, err := client.Upload(context.Background(), path)
+			if err == nil {
+				t.Fatal("expected authentication error")
+			}
+			if got := apperr.ExitCode(err); got != apperr.ExitAuth {
+				t.Fatalf("exit code = %d, want %d", got, apperr.ExitAuth)
+			}
+
+			var appErr *apperr.Error
+			if !errors.As(err, &appErr) {
+				t.Fatalf("error type = %T, want *apperr.Error", err)
+			}
+			for _, variable := range test.wantVariables {
+				if !strings.Contains(appErr.NextStep, variable) {
+					t.Errorf("NextStep = %q, want %s", appErr.NextStep, variable)
+				}
+			}
+			for _, secret := range []string{
+				cfg.SnowAccessToken,
+				cfg.SnowUsername,
+				cfg.SnowPassword,
+			} {
+				if strings.Contains(appErr.NextStep, secret) {
+					t.Errorf("NextStep leaked credential %q", secret)
+				}
 			}
 		})
 	}
@@ -211,4 +381,9 @@ func TestUploadBuildIDResolutionAndEncoding(t *testing.T) {
 			}
 		})
 	}
+}
+
+func derivedTestValue(t *testing.T, discriminator string) string {
+	t.Helper()
+	return base64.RawURLEncoding.EncodeToString([]byte(t.Name() + discriminator))
 }

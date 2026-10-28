@@ -12,6 +12,8 @@ const Mask = "************"
 
 var secretPatterns = []string{
 	"token",
+	"username",
+	"user_name",
 	"password",
 	"passwd",
 	"authorization",
